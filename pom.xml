@@ -6,9 +6,9 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.mvohm.quadmatrix</groupId>
-  <artifactId>QuadMatrix</artifactId>
+  <artifactId>QuadMatrix-LOPT</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>a simple Quadruple matrix</name>
+  <name>a project-specific variant of QuadMatrix</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
