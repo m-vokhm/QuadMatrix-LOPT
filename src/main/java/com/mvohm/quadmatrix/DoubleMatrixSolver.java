@@ -129,11 +129,13 @@ class DoubleMatrixSolver extends MatrixSolver {
     // Copy right hand side with pivoting and scaling
     final double[][] matrixX = scaleAndPermute(matrixB, pivot); // Spoils matrixB, and returns a new array
 
+    long opCount = 0;
     // Solve L*Y = B(piv,:)
     for (int k = 0; k < size; k++) {
       for (int i = k + 1; i < size; i++) {
         for (int j = 0; j < size; j++) {
           matrixX[i][j] -= matrixX[k][j] * luDecomposition[i][k];
+          opCount++;
         }
       }
     }
@@ -142,13 +144,17 @@ class DoubleMatrixSolver extends MatrixSolver {
     for (int k = size - 1; k >= 0; k--) {
       for (int j = 0; j < size; j++) {
         matrixX[k][j] /= luDecomposition[k][k];
+        opCount++;
       }
       for (int i = 0; i < k; i++) {
         for (int j = 0; j < size; j++) {
           matrixX[i][j] -= matrixX[k][j] * luDecomposition[i][k];
+          opCount++;
         }
       }
     }
+
+    System.out.println(String.format("\nMatrix solution, \t%4d,\t opCount = \t%10d", size, opCount));
 
     return matrixX;
   }
@@ -191,25 +197,27 @@ class DoubleMatrixSolver extends MatrixSolver {
     return result;
   }
 
-
-
-
   /* *******************************************************************************
   /* **** Multiplications **********************************************************
   /*********************************************************************************/
 
-
   double[][] multiply(double[][] factor) {
+    long opCount = 0;
     final double[][] product = new double[size][size];
     final double[] prodVector = new double[size];
     for (int i = 0; i < size; i++) {
       for (int j = 0; j < size; j++) {
         for (int k = 0; k < size; k++) {
           prodVector[k] = matrix[i][k] * factor[k][j];
+          opCount++;
         }
         product[i][j] = sumOfVector(prodVector);
+        opCount += sumOpCount;
       }
     }
+
+    System.out.println(String.format("\nMultiplication, \t%4d,\t opCount = \t%10d", size, opCount));
+
     return product;
   }
 
@@ -311,19 +319,20 @@ class DoubleMatrixSolver extends MatrixSolver {
     errorCode = ErrorCodes.OK;                                    // May remain after failed SPD decomposition
     vector = vector.clone();                                      // preserve the data passed-in
 
+    long opCount = 0;
     if (luDecomposition == null) {                                // The very first invocation.
       vector = scaleMatrixAndVector(vector);          // creates luDecomposition and a scaled copy of the matrix
-      decomposeLU();                                              // modifies luDecomposition and creates the pivot.
+      opCount = decomposeLU();                                              // modifies luDecomposition and creates the pivot.
     } else {
       vector = scaleVector(vector);                               // scales and returns vector
     }
-
     final double[] solution = getPermutted(vector, pivot);        // returns a new array
 
     // Solve L * Y = B(piv,:)
     for (int k = 0; k < size; k++)
      for (int i = k + 1; i < size; i++) {
        solution[i] -= solution[k] * luDecomposition[i][k];        // (N^2 - N) / 2
+       opCount++;
      }
 
     // Solve U * X = Y;
@@ -331,10 +340,12 @@ class DoubleMatrixSolver extends MatrixSolver {
       solution[k] /= luDecomposition[k][k];                       // N
       for (int i = 0; i < k; i++) {
         solution[i] -= solution[k] * luDecomposition[i][k];       // (N^2 - N) / 2
+        opCount++;
       }
     }
 
-    // (N^2 - N) multiplications and subtractions, N divisions
+    System.out.println(String.format("\nLU Vector solution, \t%4d,\t opCount = \t%10d", size, opCount));
+
     return solution;
   }
 
@@ -371,8 +382,9 @@ class DoubleMatrixSolver extends MatrixSolver {
     if (choleskyDecompositionError)
       throwCholeskyError(errorCode);
 
+    long opCount = 0;
     if (choleskyDecomposition == null)
-      decomposeCholesky();
+      opCount = decomposeCholesky();
 
     final double[] solution = vector.clone();
 
@@ -380,17 +392,23 @@ class DoubleMatrixSolver extends MatrixSolver {
     for (int i = 0; i < size; i++) {
       for (int k = 0; k < i ; k++) {
         solution[i] -= solution[k] * choleskyDecomposition[i][k];
+        opCount++;
       }
       solution[i] /= choleskyDecomposition[i][i];
+      opCount++;
     }
 
     // Solve L'*X = Y;
     for (int k = size - 1; k >= 0; k--) {
       for (int i = k + 1; i < size ; i++) {
         solution[k] -= solution[i] * choleskyDecomposition[i][k];
+        opCount++;
       }
       solution[k] /= choleskyDecomposition[k][k];
+      opCount++;
     }
+
+    System.out.println(String.format("\nCh Vector solution, \t%4d,\t opCount = \t%10d", size, opCount));
 
     return solution;
   }
@@ -483,18 +501,24 @@ class DoubleMatrixSolver extends MatrixSolver {
   private static double sumOfVector(double[] vector) {
     double sum = 0.0;
     double c = 0.0;
+    long opCount = 0;
     for (int i = 0; i < vector.length; i++) {
       final double y = vector[i] - c;
       final double t = sum + y;
       c = (t - sum) - y;
       sum = t;
+      opCount += 4;
     }
+    sumOpCount = opCount;
     return sum;
   }
 
-  private void scaleAndDecompose() {
-    scaleMatrix(); // creates luDecomposition and a scaled copy of matrix
-    decomposeLU(); // modifies luDecomposition and creates pivot.
+  private static long sumOpCount;
+
+  private long scaleAndDecompose() {
+    long opCount = scaleMatrix(); // creates luDecomposition and a scaled copy of matrix
+    opCount += decomposeLU(); // modifies luDecomposition and creates pivot.
+    return opCount;
   }
 
   double[][] solveAccurately(double[][] matrixB) {
@@ -564,12 +588,12 @@ class DoubleMatrixSolver extends MatrixSolver {
    * Private methods used by solveLU *********************************************
    *******************************************************************************/
 
-  private void decomposeLU() {
+  private long decomposeLU() {
     pivot = new int[size];
     for (int i = 0; i < size; i++) {
       pivot [i] = i;
     }
-
+    long opCount = 0;
     for (int i = 0; i < size; i++) {
       int p = i;
       for (int j = i + 1; j < size; j++) {
@@ -593,6 +617,7 @@ class DoubleMatrixSolver extends MatrixSolver {
             final double row_j_i = row_j[i] *= row_i_i;
             for (int k = i + 1; k < size; k++) {
               row_j[k] -= row_i[k] * row_j_i;
+              opCount++;
             }
           }
         }
@@ -600,12 +625,12 @@ class DoubleMatrixSolver extends MatrixSolver {
         throwNonInvertibleError();
       }
     }
-
+    return opCount;
   }
 
-  private void decomposeCholesky() {
+  private long decomposeCholesky() {
     choleskyDecomposition = new double[size][size];   // If we are here, decomosition == null (called from within if statement)
-
+    long opCount = 0;
     for (int i = 0; i < size; i++) {
       double sum2 = 0;
       for (int j = 0; j < i; j++) {
@@ -613,11 +638,14 @@ class DoubleMatrixSolver extends MatrixSolver {
           throwCholeskyError(ErrorCodes.ASYMMETRIC);
 
         double sum = 0;
-        for (int k = 0; k < j; k++)
+        for (int k = 0; k < j; k++) {
           sum += choleskyDecomposition[i][k] * choleskyDecomposition[j][k];
+          opCount++;
+        }
 
         final double s = choleskyDecomposition[i][j] = (matrix[i][j] - sum) / choleskyDecomposition[j][j]; // 2
         sum2 += s * s;
+        opCount++;
       }
 
       final double dd = matrix[i][i] - sum2;
@@ -627,6 +655,7 @@ class DoubleMatrixSolver extends MatrixSolver {
 
       choleskyDecomposition[i][i] = Math.sqrt(dd);
     }
+    return opCount;
   }
 
   /**
@@ -644,7 +673,8 @@ class DoubleMatrixSolver extends MatrixSolver {
    * Direct or indirect call to it is always followed by call to decomposeLU(),
    * so that luDecomposition is always either null or contains the LU-decomposition
    */
-  private void scaleMatrix() {
+  private long scaleMatrix() {
+    long opCount = 0;
     rowScales = new double[size];
     luDecomposition = new double[size][size];
     if (needToScale) {
@@ -653,9 +683,12 @@ class DoubleMatrixSolver extends MatrixSolver {
         final double scale = (rowSum > 0) ?
             (1.0 / rowSum) :
             1;
+        opCount++;
         rowScales[i] = scale;
-        for (int j = 0; j < size; j++)
+        for (int j = 0; j < size; j++) {
           luDecomposition[i][j] = matrix[i][j] * scale;
+          opCount++;
+        }
       }
     } else {
       for (int i = 0; i < size; i++) {
@@ -663,6 +696,7 @@ class DoubleMatrixSolver extends MatrixSolver {
         luDecomposition[i] = matrix[i].clone() ;
       }
     }
+    return opCount;
   }
 
   /** Attention -- spoils the matrix, returns a new array */
