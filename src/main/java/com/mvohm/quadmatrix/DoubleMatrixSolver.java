@@ -154,7 +154,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       }
     }
 
-    System.out.println(String.format("\nMatrix solution, \t%4d,\t opCount = \t%10d", size, opCount));
+    System.out.print(String.format("\nMatrix solution, \t%4d,\t opCount = \t%10d", size, opCount));
 
     return matrixX;
   }
@@ -203,12 +203,20 @@ class DoubleMatrixSolver extends MatrixSolver {
 
   double[][] multiply(double[][] factor) {
     long opCount = 0;
+
+    final double[][] transFactor = new double[size][size];
+    for (int i = 0; i < size; i++) {
+      for (int j = 0; j < size; j++) {
+        transFactor[i][j] = factor[j][i];
+      }
+    }
+
     final double[][] product = new double[size][size];
     final double[] prodVector = new double[size];
     for (int i = 0; i < size; i++) {
       for (int j = 0; j < size; j++) {
         for (int k = 0; k < size; k++) {
-          prodVector[k] = matrix[i][k] * factor[k][j];
+          prodVector[k] = matrix[i][k] * transFactor[j][k];
           opCount++;
         }
         product[i][j] = sumOfVector(prodVector);
@@ -216,7 +224,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       }
     }
 
-    System.out.println(String.format("\nMultiplication, \t%4d,\t opCount = \t%10d", size, opCount));
+    System.out.print(String.format("\nMultiplication,  \t%4d,\t opCount = \t%10d", size, opCount));
 
     return product;
   }
