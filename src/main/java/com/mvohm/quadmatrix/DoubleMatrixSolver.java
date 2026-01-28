@@ -1,6 +1,6 @@
 /*
 
- Copyright 2021-2023 M.Vokhmuentsev
+ Copyright 2021-2023 M.Vokhmentsev
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -63,7 +63,9 @@ class DoubleMatrixSolver extends MatrixSolver {
 
     @Override public void sayStarting(String opName) {
       currentOpName = opName;
-      say("Started " + opName);
+      if (showMessages) {
+        say("Started " + opName);
+      }
       t = -System.nanoTime();
     }
 
@@ -73,7 +75,9 @@ class DoubleMatrixSolver extends MatrixSolver {
 
     @Override public void sayDone() {
       t += System.nanoTime();
-      say("Done %s, %.3f s", currentOpName, 1e-9 * t);
+      if (showMessages) {
+        say("Done %s, %.3f s", currentOpName, 1e-9 * t);
+      }
     }
 
   };
@@ -90,8 +94,8 @@ class DoubleMatrixSolver extends MatrixSolver {
 
   private static final double LU_VECTOR_SOLUTION_OPS_PER_M  = 0.761;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
   private static final double CH_VECTOR_SOLUTION_OPS_PER_M  = 0.173;   // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
-  private static final double MATRIX_SOLUTION_OPS_PER_M     = 1.54;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
-  private static final double INVERSION_OPS_PER_M           = 1.54;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double MATRIX_SOLUTION_OPS_PER_M     = 1.74;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double INVERSION_OPS_PER_M           = 1.74;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
   private static final double MULTIPLICATION_OPS_PER_M      = 5.0;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
 
   private static final String LU_VECTOR_SOLUTION_NAME   = "LU vector solution"; // Operation name for a start message
@@ -102,7 +106,6 @@ class DoubleMatrixSolver extends MatrixSolver {
 
   // Add additional constants for other operations as needed.
 
-  private static final long OP_COUNT_STEP = 0x7F_FFFFL; // To check progress every 16,777,216 elementary operations, ~30 ms
   private static final double PERCENTAGE_STEP = 5.0;  // Report progress after every 5%
 
 
@@ -160,7 +163,9 @@ class DoubleMatrixSolver extends MatrixSolver {
 
   /** Attention -- spoils the matrixB, but returns a newly-created array */
   double[][] solve(double[][] matrixB) {
+    clientDelegate.sayStarting(MATRIX_SOLUTION_NAME);
     final double[][] result = doSolve(matrixB);
+    clientDelegate.sayDone();
     return result;
   }
 
@@ -169,7 +174,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       throwNonInvertibleError();
 
     long opCount = 0;
-    if (size > 10) {
+    if (showMessages && size > 10) {
       initProgressTracking(MATRIX_SOLUTION_OPS_PER_M, size);
     }
 
@@ -189,7 +194,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       }
       opCount += (size - k - 1) * size;
       if (opCount > nextOpsThreshold) {
-//        updateProgress(opCount, size);
+        updateProgress(opCount, size);
       }
     }
 
@@ -205,12 +210,14 @@ class DoubleMatrixSolver extends MatrixSolver {
       }
       opCount += size * size;
       if (opCount > nextOpsThreshold) {
-//        updateProgress(opCount, size);
+        updateProgress(opCount, size);
       }
     }
 
-    if (size > 10) {
-      say("Matrix solution, size = \t%4d,\t opCount = \t%,10d", size, opCount);
+    if (showMessages && size > 10) {
+      say("Matrix solution, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
+          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
+
     }
 
     return matrixX;
@@ -221,10 +228,11 @@ class DoubleMatrixSolver extends MatrixSolver {
   /* ********************************************************************************/
 
   double[][] inverse() {
-    // clientDelegate.sayStarting(INVERSION_NAME);
-    if (inversion == null)
+    if (inversion == null) {
+      clientDelegate.sayStarting(INVERSION_NAME);
       inversion = doSolve(unityMatrix());
-    // clientDelegate.sayDone();
+      clientDelegate.sayDone();
+    }
     return inversion;
   }
 
@@ -262,8 +270,8 @@ class DoubleMatrixSolver extends MatrixSolver {
 
   double[][] multiply(double[][] factor) {
     long opCount = 0;
-    if (size > 10) {
-      // clientDelegate.sayStarting(MULTIPLICATION_NAME);
+    if (showMessages && size > 10) {
+      clientDelegate.sayStarting(MULTIPLICATION_NAME);
       initProgressTracking(MULTIPLICATION_OPS_PER_M, size);
     }
 
@@ -283,17 +291,18 @@ class DoubleMatrixSolver extends MatrixSolver {
         }
         product[i][j] = sumOfVector(prodVector);
         opCount += sumOpCount + size;
-// TODO HERE
         if (opCount > nextOpsThreshold) {
           updateProgress(opCount, size);
         }
       }
     }
 
-    if (size > 10) {
-      say("\nMultiplication,  \t%4d,\t opCount = \t%10d", size, opCount);
-    // clientDelegate.sayDone();
+    if (showMessages && size > 10) {
+      say("Multiplication, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
+          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
+      clientDelegate.sayDone();
     }
+
     return product;
   }
 
@@ -392,7 +401,7 @@ class DoubleMatrixSolver extends MatrixSolver {
     if (luDecompositionError)
       throwNonInvertibleError();
 
-    if (size > 10) {
+    if (showMessages && size > 10) {
       clientDelegate.sayStarting(LU_VECTOR_SOLUTION_NAME);
       initProgressTracking(LU_VECTOR_SOLUTION_OPS_PER_M, size);
     }
@@ -410,29 +419,22 @@ class DoubleMatrixSolver extends MatrixSolver {
     final double[] solution = getPermutted(vector, pivot);        // returns a new array
 
     // Solve L * Y = B(piv,:)
-    int ccc = 0;
-    int cc = 0;
     for (int k = 0; k < size; k++) {
       for (int i = k + 1; i < size; i++) {
         solution[i] -= solution[k] * luDecomposition[i][k];        // (N^2 - N) / 2
-        ccc++;
       }
     }
-    cc = size * (size - 1) / 2;
     opCount += size * (size - 1) / 2;
     if (opCount > nextOpsThreshold) {
       updateProgress(opCount, size);
     }
 
     // Solve U * X = Y;
-    ccc = 0;
     for (int k = size - 1; k >= 0; k--) {
       solution[k] /= luDecomposition[k][k];                       // N
       for (int i = 0; i < k; i++) {
         solution[i] -= solution[k] * luDecomposition[i][k];       // (N^2 - N) / 2
-        ccc++;
       }
-      cc = (size - k - 1) * size;;
       opCount += (size - k - 1) * size;
       if (opCount > nextOpsThreshold) {
         updateProgress(opCount, size);
@@ -440,7 +442,7 @@ class DoubleMatrixSolver extends MatrixSolver {
 
     }
 
-    if (size > 10) {
+    if (showMessages && size > 10) {
       say("LU Vector solution, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
           size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
       clientDelegate.sayDone();
@@ -484,7 +486,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       throwCholeskyError(errorCode);
 
     long opCount = 0;
-    if (size > 10) {
+    if (showMessages && size > 10) {
       clientDelegate.sayStarting(CH_VECTOR_SOLUTION_NAME);
       initProgressTracking(CH_VECTOR_SOLUTION_OPS_PER_M, size);
     }
@@ -520,9 +522,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       updateProgress(opCount, size);
     }
 
-
-
-    if (size  > 10) {
+    if (showMessages && size  > 10) {
       say("Ch Vector solution, \t%4d\t opCount = \t%11d\t k = \t%5.3f\t, act/exp = \t%5.3f\t",
           size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
       clientDelegate.sayDone();
@@ -618,19 +618,13 @@ class DoubleMatrixSolver extends MatrixSolver {
   private static double sumOfVector(double[] vector) {
     double sum = 0.0;
     double c = 0.0;
-    long opCount = 0;
     for (int i = 0; i < vector.length; i++) {
       final double y = vector[i] - c;
       final double t = sum + y;
       c = (t - sum) - y;
       sum = t;
-      opCount += 4 & OP_COUNT_STEP;
-//      if (opCount < 4) {
-//        updateProgress(opCount);
-//        opCount += 4;
-//      }
     }
-    sumOpCount = opCount;
+    sumOpCount = 4 * vector.length;
     return sum;
   }
 
@@ -901,6 +895,8 @@ class DoubleMatrixSolver extends MatrixSolver {
   private static long nextOpsThreshold;
   private static long opsPerPercentageStep;
 
+  private static boolean showMessages = false;
+
   /**
    * Initializes parameters required for progress tracking.
    * The expected number of elementary arithmetic operations is computed
@@ -913,7 +909,7 @@ class DoubleMatrixSolver extends MatrixSolver {
    *        and specific to the operation type
    */
   private static void initProgressTracking(double opsPerM, long size) {
-    if (size > 10) {
+    if (showMessages && size > 10) {
       expectedTotalOps = (long)(opsPerM * size * size * size);
       nextOpsThreshold = (long)(expectedTotalOps * PERCENTAGE_STEP / 100.0); // Assuming
       opsPerPercentageStep = nextOpsThreshold;
@@ -934,7 +930,7 @@ class DoubleMatrixSolver extends MatrixSolver {
    * @param size TODO
    */
   private static void updateProgress(long doneOps, int size) {
-    if (size > 10 && doneOps >= nextOpsThreshold) {
+    if (showMessages && size > 10 && doneOps >= nextOpsThreshold) {
       final double donePercent = 100.0 * doneOps / expectedTotalOps;
       clientDelegate.showPercent(donePercent);
       if (opsPerPercentageStep > 0) {
