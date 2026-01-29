@@ -20,12 +20,9 @@ package com.mvohm.quadmatrix;
 
 import com.mvohm.quadmatrix.Matrix.ErrorCodes;
 import com.mvohm.quadmatrix.api.ClientDelegate;
-import com.mvohm.quadmatrix.api.NoOpDelegate;
 import com.mvohm.quadruple.Quadruple;
 
 import static com.mvohm.quadmatrix.Util.*;
-
-import java.util.List;
 
 class DoubleMatrixSolver extends MatrixSolver {
 
@@ -56,31 +53,7 @@ class DoubleMatrixSolver extends MatrixSolver {
   private double determinant = Double.NaN;      // Unless already computed
   private Double norm;
 
-  private static ClientDelegate clientDelegate = new NoOpDelegate() {
-
-    private long t;
-    private String currentOpName;
-
-    @Override public void sayStarting(String opName) {
-      currentOpName = opName;
-      if (showMessages) {
-        say("Started " + opName);
-      }
-      t = -System.nanoTime();
-    }
-
-    @Override public void showPercent(double percent) {
-      // say("Done %4.1f %%", percent);
-    }
-
-    @Override public void sayDone() {
-      t += System.nanoTime();
-      if (showMessages) {
-        say("Done %s, %.3f s", currentOpName, 1e-9 * t);
-      }
-    }
-
-  };
+  private static ClientDelegate clientDelegate = ClientDelegate.NO_OP;
 
   DoubleMatrixSolver(double[][] matrix, boolean needToScale) {
     this.size = matrix.length;
@@ -107,6 +80,8 @@ class DoubleMatrixSolver extends MatrixSolver {
   // Add additional constants for other operations as needed.
 
   private static final double PERCENTAGE_STEP = 5.0;  // Report progress after every 5%
+
+  private long scaleOpCount;
 
 
   /* *******************************************************************************
@@ -174,7 +149,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       throwNonInvertibleError();
 
     long opCount = 0;
-    if (showMessages && size > 10) {
+    if (size > 10) {
       initProgressTracking(MATRIX_SOLUTION_OPS_PER_M, size);
     }
 
@@ -212,12 +187,6 @@ class DoubleMatrixSolver extends MatrixSolver {
       if (opCount > nextOpsThreshold) {
         updateProgress(opCount, size);
       }
-    }
-
-    if (showMessages && size > 10) {
-      say("Matrix solution, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
-          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
-
     }
 
     return matrixX;
@@ -269,8 +238,9 @@ class DoubleMatrixSolver extends MatrixSolver {
   /*********************************************************************************/
 
   double[][] multiply(double[][] factor) {
+
     long opCount = 0;
-    if (showMessages && size > 10) {
+    if (size > 10) {
       clientDelegate.sayStarting(MULTIPLICATION_NAME);
       initProgressTracking(MULTIPLICATION_OPS_PER_M, size);
     }
@@ -297,12 +267,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       }
     }
 
-    if (showMessages && size > 10) {
-      say("Multiplication, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
-          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
-      clientDelegate.sayDone();
-    }
-
+    clientDelegate.sayDone();
     return product;
   }
 
@@ -401,7 +366,7 @@ class DoubleMatrixSolver extends MatrixSolver {
     if (luDecompositionError)
       throwNonInvertibleError();
 
-    if (showMessages && size > 10) {
+    if (size > 10) {
       clientDelegate.sayStarting(LU_VECTOR_SOLUTION_NAME);
       initProgressTracking(LU_VECTOR_SOLUTION_OPS_PER_M, size);
     }
@@ -442,11 +407,7 @@ class DoubleMatrixSolver extends MatrixSolver {
 
     }
 
-    if (showMessages && size > 10) {
-      say("LU Vector solution, \t%4d,\t opCount = \t%,10d, k = %5.3f, act/exp = %5.3f",
-          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
-      clientDelegate.sayDone();
-    }
+    clientDelegate.sayDone();
     return solution;
   }
 
@@ -470,8 +431,6 @@ class DoubleMatrixSolver extends MatrixSolver {
     return vector;
   }
 
-  long scaleOpCount;
-
   /**
    * Solves a system formed by the matrix and the given vector
    * using Cholesky decomposition
@@ -486,7 +445,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       throwCholeskyError(errorCode);
 
     long opCount = 0;
-    if (showMessages && size > 10) {
+    if (size > 10) {
       clientDelegate.sayStarting(CH_VECTOR_SOLUTION_NAME);
       initProgressTracking(CH_VECTOR_SOLUTION_OPS_PER_M, size);
     }
@@ -522,12 +481,7 @@ class DoubleMatrixSolver extends MatrixSolver {
       updateProgress(opCount, size);
     }
 
-    if (showMessages && size  > 10) {
-      say("Ch Vector solution, \t%4d\t opCount = \t%11d\t k = \t%5.3f\t, act/exp = \t%5.3f\t",
-          size, opCount, (double)opCount / (size * size * size), (double)opCount / expectedTotalOps );
-      clientDelegate.sayDone();
-
-    }
+    clientDelegate.sayDone();
     return solution;
   }
 
@@ -895,8 +849,6 @@ class DoubleMatrixSolver extends MatrixSolver {
   private static long nextOpsThreshold;
   private static long opsPerPercentageStep;
 
-  private static boolean showMessages = false;
-
   /**
    * Initializes parameters required for progress tracking.
    * The expected number of elementary arithmetic operations is computed
@@ -909,12 +861,10 @@ class DoubleMatrixSolver extends MatrixSolver {
    *        and specific to the operation type
    */
   private static void initProgressTracking(double opsPerM, long size) {
-    if (showMessages && size > 10) {
+    if (size > 10) {
       expectedTotalOps = (long)(opsPerM * size * size * size);
       nextOpsThreshold = (long)(expectedTotalOps * PERCENTAGE_STEP / 100.0); // Assuming
       opsPerPercentageStep = nextOpsThreshold;
-      System.out.println(String.format("Expected count: %,15d, \nnext threshold: %,15d",
-                                        expectedTotalOps, nextOpsThreshold));
     }
   }
 
@@ -930,14 +880,12 @@ class DoubleMatrixSolver extends MatrixSolver {
    * @param size TODO
    */
   private static void updateProgress(long doneOps, int size) {
-    if (showMessages && size > 10 && doneOps >= nextOpsThreshold) {
+    if (size > 10 && doneOps >= nextOpsThreshold) {
       final double donePercent = 100.0 * doneOps / expectedTotalOps;
       clientDelegate.showPercent(donePercent);
       if (opsPerPercentageStep > 0) {
         nextOpsThreshold = (doneOps / opsPerPercentageStep + 1) * opsPerPercentageStep;
       }
-      System.out.println(String.format( "Next threshold: %,15d, %4.1f %%",
-                                        nextOpsThreshold, donePercent));
     }
   }
 

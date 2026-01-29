@@ -19,6 +19,7 @@
 package com.mvohm.quadmatrix;
 
 import com.mvohm.quadmatrix.Matrix.ErrorCodes;
+import com.mvohm.quadmatrix.api.ClientDelegate;
 import com.mvohm.quadruple.Quadruple;
 
 import static com.mvohm.quadmatrix.Util.*;
@@ -26,8 +27,9 @@ import static com.mvohm.quadmatrix.Util.*;
 
 
 class QuadrupleMatrixSolver extends MatrixSolver {
-
   // TODO_for_next_release 2023-05-27 11:10:12 Reorder methods accordingly with their usage
+
+  private static ClientDelegate clientDelegate = ClientDelegate.NO_OP;
 
   enum SolutionMethod {NONE, CHOLESKY, LU};
 
@@ -54,16 +56,15 @@ class QuadrupleMatrixSolver extends MatrixSolver {
   private Quadruple determinant = Quadruple.nan();      // Unless already computed
   private Quadruple norm;
 
-
-
-
   QuadrupleMatrixSolver(Quadruple[][] matrix, boolean needToScale) {
     this.size = matrix.length;
     this.matrix = matrix;
     this.needToScale = needToScale;
   }
 
-
+  public static void setDelegate(ClientDelegate delegate) {
+    clientDelegate = delegate;
+  }
 
   /* *******************************************************************************
   /***** Solutions with respect of vectors *****************************************

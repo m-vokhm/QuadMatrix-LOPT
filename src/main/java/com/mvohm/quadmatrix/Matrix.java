@@ -23,9 +23,6 @@ import java.util.Objects;
 
 import com.mvohm.quadruple.Quadruple;
 
-// Started 21.06.20 10:05:16
-
-
 /**
  * A generic abstract class which defines the set of operations that all its subclasses must implement.<br>
  * Instances of subclasses are capable of:
@@ -81,7 +78,7 @@ public abstract class Matrix {
    * Returns the size of the matrix, <code>m</code> for a matrix <code>m x m</code>
    * @return the size of the matrix
    */
-  public int getSize() {
+   public int getSize() {
     return size;
   }
 

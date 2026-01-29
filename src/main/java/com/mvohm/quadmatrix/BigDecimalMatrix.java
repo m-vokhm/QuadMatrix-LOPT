@@ -25,6 +25,7 @@ import java.util.Arrays;
 
 import org.apache.commons.math3.util.Precision;
 
+import com.mvohm.quadmatrix.api.ClientDelegate;
 import com.mvohm.quadruple.Quadruple;
 
 import static com.mvohm.quadmatrix.BigDecimalMatrixSolver.*;
@@ -464,6 +465,10 @@ public class BigDecimalMatrix extends Matrix {
    */
   public static int getDefaultPrecision() {
     return defaultPrecision;
+  }
+
+  public void setDelegate(ClientDelegate delegate) {
+    BigDecimalMatrixSolver.setDelegate(delegate);
   }
 
   /* *******************************************************************************

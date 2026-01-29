@@ -19,6 +19,8 @@
 package com.mvohm.quadmatrix;
 
 import com.mvohm.quadmatrix.Matrix.ErrorCodes;
+import com.mvohm.quadmatrix.api.ClientDelegate;
+
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
@@ -26,8 +28,9 @@ import java.math.RoundingMode;
 import static com.mvohm.quadmatrix.Util.*;
 
 class BigDecimalMatrixSolver extends MatrixSolver {
-
   // TODO_for_next_release 2023-05-27 11:10:12 Reorder methods accordingly with their usage
+
+  private static ClientDelegate clientDelegate = ClientDelegate.NO_OP;
 
   enum SolutionMethod {NONE, CHOLESKY, LU};
 
@@ -63,6 +66,10 @@ class BigDecimalMatrixSolver extends MatrixSolver {
     this.needToScale = needToScale;
     this.mc = mc;
     this.mc2 = new MathContext(mc.getPrecision() + 10, RoundingMode.HALF_EVEN); // For cases where the error can accumulate
+  }
+
+  public static void setDelegate(ClientDelegate delegate) {
+    clientDelegate = delegate;
   }
 
   /* *******************************************************************************

@@ -21,6 +21,7 @@ package com.mvohm.quadmatrix;
 import java.math.BigDecimal;
 import java.util.Arrays;
 
+import com.mvohm.quadmatrix.api.ClientDelegate;
 import com.mvohm.quadruple.Quadruple;
 
 import static com.mvohm.quadmatrix.QuadrupleMatrixSolver.*;
@@ -238,6 +239,10 @@ public class QuadrupleMatrix extends Matrix {
   public static boolean getDefaultScaling() {
     return scaleByDefault;
   };
+
+  public static void setDelegate(ClientDelegate delegate) {
+    QuadrupleMatrixSolver.setDelegate(delegate);
+  }
 
   /* *******************************************************************************
   /***** Getting data **************************************************************
