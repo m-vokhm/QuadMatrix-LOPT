@@ -245,19 +245,14 @@ class DoubleMatrixSolver extends MatrixSolver {
       initProgressTracking(MULTIPLICATION_OPS_PER_M, size);
     }
 
-    final double[][] transFactor = new double[size][size];
-    for (int i = 0; i < size; i++) {
-      for (int j = 0; j < size; j++) {
-        transFactor[i][j] = factor[j][i];
-      }
-    }
+    factor = transpose(factor);
 
     final double[][] product = new double[size][size];
     final double[] prodVector = new double[size];
     for (int i = 0; i < size; i++) {
       for (int j = 0; j < size; j++) {
         for (int k = 0; k < size; k++) {
-          prodVector[k] = matrix[i][k] * transFactor[j][k];
+          prodVector[k] = matrix[i][k] * factor[j][k];
         }
         product[i][j] = sumOfVector(prodVector);
         opCount += sumOpCount + size;
