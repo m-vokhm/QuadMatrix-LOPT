@@ -23,8 +23,6 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.Arrays;
 
-import org.apache.commons.math3.util.Precision;
-
 import com.mvohm.quadmatrix.api.ClientDelegate;
 import com.mvohm.quadruple.Quadruple;
 
