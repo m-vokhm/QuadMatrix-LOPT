@@ -21,6 +21,7 @@ package com.mvohm.quadmatrix;
 import java.math.BigDecimal;
 import java.util.Objects;
 
+import com.mvohm.quadmatrix.api.ClientDelegate;
 import com.mvohm.quadruple.Quadruple;
 
 /**
@@ -1382,5 +1383,7 @@ public abstract class Matrix {
   private static void throwNonSquareArray(String callerName) {
     throw new IllegalArgumentException("The array passed to " + callerName + " must be square");
   }
+
+  public abstract void setDelegate(ClientDelegate delegate);
 
 }

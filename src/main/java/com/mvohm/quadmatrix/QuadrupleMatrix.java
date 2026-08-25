@@ -240,7 +240,8 @@ public class QuadrupleMatrix extends Matrix {
     return scaleByDefault;
   };
 
-  public static void setDelegate(ClientDelegate delegate) {
+  @Override
+  public void setDelegate(ClientDelegate delegate) {
     QuadrupleMatrixSolver.setDelegate(delegate);
   }
 
