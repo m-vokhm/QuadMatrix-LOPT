@@ -66,6 +66,25 @@ class QuadrupleMatrixSolver extends MatrixSolver {
     clientDelegate = delegate;
   }
 
+  private static final double LU_VECTOR_SOLUTION_OPS_PER_M  = 0.761;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double CH_VECTOR_SOLUTION_OPS_PER_M  = 0.173;   // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double MATRIX_SOLUTION_OPS_PER_M     = 1.74;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double INVERSION_OPS_PER_M           = 1.74;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+  private static final double MULTIPLICATION_OPS_PER_M      = 5.0;    // Approx. elementary ops for 100x100 matrix (N^3 = 1,000,000)
+
+  private static final String LU_VECTOR_SOLUTION_NAME   = "LU vector solution"; // Operation name for a start message
+  private static final String CH_VECTOR_SOLUTION_NAME   = "Ch vector solution";
+  private static final String MATRIX_SOLUTION_NAME      = "Matrix solution";
+  private static final String INVERSION_NAME            = "Inversion";
+  private static final String MULTIPLICATION_NAME       = "Multiplication";
+
+  // Add additional constants for other operations as needed.
+
+  private static final double PERCENTAGE_STEP = 5.0;  // Report progress after every 5%
+
+  private long scaleOpCount;
+
+
   /* *******************************************************************************
   /***** Solutions with respect of vectors *****************************************
   /*********************************************************************************/
@@ -120,11 +139,24 @@ class QuadrupleMatrixSolver extends MatrixSolver {
 
   /** Attention -- spoils the matrixB, but returns a newly-created array */
   Quadruple[][] solve(Quadruple[][] matrixB) {
+    clientDelegate.sayStarting(MATRIX_SOLUTION_NAME);
+    final Quadruple[][] result = doSolve(matrixB);
+    clientDelegate.sayDone();
+    return result;
+  }
+  
+  
+  Quadruple[][] doSolve(Quadruple[][] matrixB) {
     if (luDecompositionError)
       throwNonInvertibleError();
 
+    long opCount = 0;
+    if (size > 10) {
+      initProgressTracking(MATRIX_SOLUTION_OPS_PER_M, size);
+    }
+
     if (luDecomposition == null) { // The very first invocation.
-      scaleAndDecompose();
+      opCount = scaleAndDecompose();
     }
 
     // Copy right hand side with pivoting and scaling
@@ -136,6 +168,10 @@ class QuadrupleMatrixSolver extends MatrixSolver {
         for (int j = 0; j < size; j++) {
           matrixX[i][j].subtract(Quadruple.multiply(matrixX[k][j], luDecomposition[i][k]));
         }
+      }
+      opCount += (size - k - 1) * size;
+      if (opCount > nextOpsThreshold) {
+        updateProgress(opCount, size);
       }
     }
 
@@ -149,6 +185,10 @@ class QuadrupleMatrixSolver extends MatrixSolver {
           matrixX[i][j].subtract(Quadruple.multiply(matrixX[k][j], luDecomposition[i][k]));
         }
       }
+      opCount += size * size;
+      if (opCount > nextOpsThreshold) {
+        updateProgress(opCount, size);
+      }
     }
 
     return matrixX;
@@ -159,8 +199,11 @@ class QuadrupleMatrixSolver extends MatrixSolver {
   /* ********************************************************************************/
 
   Quadruple[][] inverse() {
-    if (inversion == null)
-      inversion = solve(unityMatrix());
+    if (inversion == null) {
+      clientDelegate.sayStarting(INVERSION_NAME);
+      inversion = doSolve(unityMatrix());
+      clientDelegate.sayDone();
+    }
     return inversion;
   }
 
@@ -201,6 +244,13 @@ class QuadrupleMatrixSolver extends MatrixSolver {
 
 
   Quadruple[][] multiply(Quadruple[][] factor) {
+
+    long opCount = 0;
+    if (size > 10) {
+      clientDelegate.sayStarting(MULTIPLICATION_NAME);
+      initProgressTracking(MULTIPLICATION_OPS_PER_M, size);
+    }
+
     final Quadruple[][] product = new Quadruple[size][size];
     final Quadruple[] prodVector = new Quadruple[size];
     for (int i = 0; i < size; i++) {
@@ -209,8 +259,14 @@ class QuadrupleMatrixSolver extends MatrixSolver {
           prodVector[k] = Quadruple.multiply(matrix[i][k], factor[k][j]);
         }
         product[i][j] = sumOfVector(prodVector);
+        opCount += sumOpCount + size;
+        if (opCount > nextOpsThreshold) {
+          updateProgress(opCount, size);
+        }
       }
     }
+
+    clientDelegate.sayDone();
     return product;
   }
 
@@ -309,12 +365,18 @@ class QuadrupleMatrixSolver extends MatrixSolver {
     if (luDecompositionError)
       throwNonInvertibleError();
 
+    if (size > 10) {
+      clientDelegate.sayStarting(LU_VECTOR_SOLUTION_NAME);
+      initProgressTracking(LU_VECTOR_SOLUTION_OPS_PER_M, size);
+    }
+    long opCount = 0;
+
     errorCode = ErrorCodes.OK;                                    // May remain after failed SPD decomposition
     vector = deepCopyOf(vector);                                  // preserve the data passed-in
 
     if (luDecomposition == null) {                                // The very first invocation.
       vector = scaleMatrixAndVector(vector);          // creates luDecomposition and a scaled copy of matrix
-      decomposeLU();                                              // modifies luDecomposition and creates pivot.
+      opCount = decomposeLU() + scaleOpCount;                     // modifies luDecomposition and creates pivot.
     } else {
       vector = scaleVector(vector);                               // scales and returns vector
     }
@@ -326,6 +388,10 @@ class QuadrupleMatrixSolver extends MatrixSolver {
      for (int i = k + 1; i < size; i++) {
        solution[i].subtract(Quadruple.multiply(solution[k], luDecomposition[i][k]));    // (N^2 - N) / 2
      }
+    opCount += size * (size - 1) / 2;
+    if (opCount > nextOpsThreshold) {
+      updateProgress(opCount, size);
+    }
 
     // Solve U * X = Y;
     for (int k = size - 1; k >= 0; k--) {
@@ -333,9 +399,14 @@ class QuadrupleMatrixSolver extends MatrixSolver {
       for (int i = 0; i < k; i++) {
         solution[i].subtract(Quadruple.multiply(solution[k], luDecomposition[i][k]));   // (N^2 - N) / 2
       }
+      opCount += (size - k - 1) * size;
+      if (opCount > nextOpsThreshold) {
+        updateProgress(opCount, size);
+      }
     }
 
     // (N^2 - N) multiplications and subtractions, N divisions
+    clientDelegate.sayDone();
     return solution;
   }
 
@@ -353,7 +424,7 @@ class QuadrupleMatrixSolver extends MatrixSolver {
    * @return
    */
   private Quadruple[] scaleMatrixAndVector(Quadruple[] vector) {
-    scaleMatrix();
+    scaleOpCount = scaleMatrix();
     if (needToScale)
       vector = scaleVector(vector);
     return vector;
@@ -372,8 +443,14 @@ class QuadrupleMatrixSolver extends MatrixSolver {
     if (choleskyDecompositionError)
       throwCholeskyError(errorCode);
 
+    long opCount = 0;
+    if (size > 10) {
+      clientDelegate.sayStarting(CH_VECTOR_SOLUTION_NAME);
+      initProgressTracking(CH_VECTOR_SOLUTION_OPS_PER_M, size);
+    }
+
     if (choleskyDecomposition == null)
-      decomposeCholesky();
+      opCount = decomposeCholesky();
 
     final Quadruple[] solution = vector.clone();
 
@@ -385,6 +462,11 @@ class QuadrupleMatrixSolver extends MatrixSolver {
       solution[i].divide(choleskyDecomposition[i][i]);
     }
 
+    opCount += size * (size + 1) / 2;
+    if (opCount > nextOpsThreshold) {
+      updateProgress(opCount, size);
+    }
+
     // Solve L'*X = Y;
     for (int k = size - 1; k >= 0; k--) {
       for (int i = k + 1; i < size ; i++) {
@@ -393,6 +475,12 @@ class QuadrupleMatrixSolver extends MatrixSolver {
       solution[k].divide(choleskyDecomposition[k][k]);
     }
 
+    opCount += size * (size + 1) / 2;
+    if (opCount > nextOpsThreshold) {
+      updateProgress(opCount, size);
+    }
+
+    clientDelegate.sayDone();
     return solution;
   }
 
@@ -490,12 +578,16 @@ class QuadrupleMatrixSolver extends MatrixSolver {
       c = Quadruple.subtract(t, sum).subtract(y);
       sum = t;
     }
+    sumOpCount = 4 * vector.length;
     return sum;
   }
 
-  private void scaleAndDecompose() {
-    scaleMatrix(); // creates luDecomposition and a scaled copy of matrix
-    decomposeLU(); // modifies luDecomposition and creates pivot.
+  private static long sumOpCount;
+
+  private long scaleAndDecompose() {
+    long opCount = scaleMatrix(); // creates luDecomposition and a scaled copy of matrix
+    opCount += decomposeLU(); // modifies luDecomposition and creates pivot.
+    return opCount;
   }
 
   Quadruple[][] solveAccurately(Quadruple[][] matrixB) {
@@ -565,13 +657,18 @@ class QuadrupleMatrixSolver extends MatrixSolver {
    * Private methods used by solveLU *********************************************
    *******************************************************************************/
 
-  private void decomposeLU() {
+  private long decomposeLU() {
     pivot = new int[size];
     for (int i = 0; i < size; i++) {
       pivot [i] = i;
     }
 
+    long opCount = 0;
+
     for (int i = 0; i < size; i++) {
+
+      int cc = 0;
+
       int p = i;
       for (int j = i + 1; j < size; j++) {
         if (luDecomposition[j][i].abs().compareTo(luDecomposition[p][i].abs()) > 0)
@@ -595,17 +692,23 @@ class QuadrupleMatrixSolver extends MatrixSolver {
             for (int k = i + 1; k < size; k++) {
               row_j[k].subtract(Quadruple.multiply(row_i[k], row_j_i));
             }
+            cc += size - i - 1;
           }
         }
       } else {
         throwNonInvertibleError();
       }
-    }
-
+      opCount += cc;
+      if (opCount > nextOpsThreshold) {
+        updateProgress(opCount, size);
+      }
+    } // for (int i = 0; i < size; i++) {
+    return opCount;
   }
 
-  private void decomposeCholesky() {
+  private long decomposeCholesky() {
     choleskyDecomposition = new Quadruple[size][size];   // If we are here, decomosition == null (called from within if statement)
+    long opCount = 0;
 
     for (int i = 0; i < size; i++) {
       final Quadruple sum2 = new Quadruple();
@@ -621,6 +724,11 @@ class QuadrupleMatrixSolver extends MatrixSolver {
         sum2.add(Quadruple.multiply(s, s));
       }
 
+      opCount += i * (i + 1) / 2;
+      if (opCount > nextOpsThreshold) {
+        updateProgress(opCount, size);
+      }
+
       final Quadruple dd = Quadruple.subtract(matrix[i][i], sum2);
       if (dd.isNegative() || dd.isInfinite() || dd.isNaN()) {
         throwCholeskyError(ErrorCodes.NON_SPD);
@@ -628,6 +736,7 @@ class QuadrupleMatrixSolver extends MatrixSolver {
 
       choleskyDecomposition[i][i] = dd.sqrt();
     }
+    return opCount;
   }
 
   /**
@@ -645,7 +754,8 @@ class QuadrupleMatrixSolver extends MatrixSolver {
    * Direct or indirect call to it is always followed by call to decomposeLU(),
    * so that luDecomposition is always either null or contains the LU-decomposition
    */
-  private void scaleMatrix() {
+  private long scaleMatrix() {
+    long opCount = 0;
     rowScales = new Quadruple[size];
     luDecomposition = new Quadruple[size][size];
     if (needToScale) {
@@ -658,12 +768,14 @@ class QuadrupleMatrixSolver extends MatrixSolver {
         for (int j = 0; j < size; j++)
           luDecomposition[i][j] = Quadruple.multiply(matrix[i][j], scale);
       }
+      opCount += size * size;
     } else {
       for (int i = 0; i < size; i++) {
         rowScales[i] = Quadruple.one();
         luDecomposition[i] = matrix[i].clone() ;
       }
     }
+    return opCount;
   }
 
   /** Attention -- spoils the matrix, returns a new array */
@@ -730,5 +842,52 @@ class QuadrupleMatrixSolver extends MatrixSolver {
     }
     return result;
   }
+
+ /* Send messages about the progress to the ckient */
+
+  private static long expectedTotalOps;
+  private static long nextOpsThreshold;
+  private static long opsPerPercentageStep;
+
+  /**
+   * Initializes parameters required for progress tracking.
+   * The expected number of elementary arithmetic operations is computed
+   * based on the matrix size and the operation type, and a threshold is
+   * established for notifying the client about progress updates.
+   *
+   * @param opsPerM
+   *        the number of elementary arithmetic operations required for the
+   *        given matrix operation on a 100×100 matrix, divided by 1,000,000,000,
+   *        and specific to the operation type
+   */
+  private static void initProgressTracking(double opsPerM, long size) {
+    if (size > 10) {
+      expectedTotalOps = (long)(opsPerM * size * size * size);
+      nextOpsThreshold = (long)(expectedTotalOps * PERCENTAGE_STEP / 100.0); // Assuming
+      opsPerPercentageStep = nextOpsThreshold;
+    }
+  }
+
+  /**
+   * Updates progress information based on the number of elementary operations
+   * performed so far. If the configured threshold is exceeded, the client is
+   * notified about the current progress, and a new threshold is computed for
+   * the next notification.
+   *
+   * @param doneOps
+   *        the number of elementary operations performed since the beginning
+   *        of the long-running operation
+   * @param size TODO
+   */
+  private static void updateProgress(long doneOps, int size) {
+    if (size > 10 && doneOps >= nextOpsThreshold) {
+      final double donePercent = 100.0 * doneOps / expectedTotalOps;
+      clientDelegate.showPercent(donePercent);
+      if (opsPerPercentageStep > 0) {
+        nextOpsThreshold = (doneOps / opsPerPercentageStep + 1) * opsPerPercentageStep;
+      }
+    }
+  }
+
 
 }
